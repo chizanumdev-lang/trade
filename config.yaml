@@ -1,0 +1,220 @@
+# Trading Bot Configuration
+
+trading:
+  mode: demo
+  symbols:
+    - 1HZ10V
+    - 1HZ75V
+  max_open_trades: 1
+  max_trades_per_direction: 1
+
+deriv:
+  app_id: 1089
+  api_token: "8zkxkSW0ePMgfSi"  # Replace with your Deriv demo token
+  endpoint: wss://ws.binaryws.com/websockets/v3
+  account_type: demo
+  currency: USD
+  symbols:
+    - "1HZ10V"
+    - "1HZ75V"
+
+mt5_bridge:
+  enabled: true
+  account_type: demo
+  display_only: true
+
+# MetaTrader 5 Settings
+mt5:
+  login: 12345678  # Your MT5 Login ID
+  password: "YOUR_MT5_PASSWORD"
+  server: "MetaQuotes-Demo"
+  symbols:
+    - "EURUSD"
+    - "GBPUSD"
+    - "AAPL"   # Apple (Stock)
+    - "TSLA"   # Tesla (Stock)
+
+# Data Feed Settings
+storage:
+  maxlen: 500  # Default number of candles/ticks to keep in memory
+
+candles:
+  tick_count: 100  # Number of ticks per tick-candle
+
+# Signal Engine Settings
+signal_engine:
+  ema:
+    fast: 9
+    slow: 21
+  
+  supply_demand:
+    impulse_multiplier: 1.5
+    base_max_candles: 4
+    zone_expiry_candles: 50
+    adx_min_value: 25        # NEW: ADX Filter
+    min_body_ratio: 0.4      # NEW: Candle Body Filter
+    manual_zones: 
+      - {low: 1.0900, high: 1.1600, direction: 'DEMAND', strength: 2}
+
+  order_blocks:
+    strength_multiplier: 2.0
+    manual_order_blocks:
+      - {low: 1.0900, high: 1.1600, direction: 'BULLISH'}
+
+  fibonacci:
+    swing_n: 3
+    levels: [0.236, 0.382, 0.5, 0.618, 0.786]
+    entry_levels: [0.618, 0.786]
+
+amd_strategy:
+  enabled: true
+  accumulation_lookback: 80
+  accumulation_window_size: 10
+  max_range_pct_adr: 0.20
+  manipulation_min_wick_atr: 0.2
+  manipulation_max_body_atr: 0.6
+  distribution_min_body_atr: 0.2
+  amd_active_candles: 20
+  min_confidence: 0.55
+  sl_buffer_atr: 0.2
+
+# Risk Management Settings
+risk_manager:
+  kelly:
+    min_risk_fraction: 0.005  # 0.5%
+    max_risk_fraction: 0.02   # 2%
+    kelly_multiplier: 1.0     # Full Risk
+    kelly_warmup_trades: 20
+    kelly_warmup_fraction: 0.01
+  
+  stop_loss:
+    atr_period: 14
+    atr_multiplier: 1.5
+    structure_buffer_pips: 2
+  
+  take_profit:
+    tp1_rr: 1.0  # 1:1 Risk:Reward
+    tp2_rr: 2.0  # 2:1 Risk:Reward
+  
+  break_even:
+    be_trigger_pips: 10
+  
+  trailing_stop:
+    trail_atr_multiplier: 1.0
+  
+  controls:
+    max_open_trades: 3
+    daily_drawdown_limit: 0.05  # 5% of opening balance
+    max_atr_spike_multiplier: 2.0 # Reject if ATR > 2x average ATR
+
+# Execution Settings
+execution:
+  limit_timeout_seconds: 10
+  max_slippage_pips: 3
+  retry_delay_seconds: 2
+  max_retries: 1
+
+routing:
+  # Symbols mapped to brokers
+  DERIV: ['V75', 'BOOM1000', 'CRASH500', 'STEP', 'R_25', '1HZ25V', '1HZ75V', '1HZ10V']
+  MT5: ['EURUSD', 'GBPUSD', 'XAUUSD', 'US30']
+
+# Instrument Specifics
+instruments:
+  EURUSD:
+    pip_value: 0.0001
+    min_lot: 0.01
+    max_lot: 100.0
+    max_spread_pips: 2.0
+  GBPUSD:
+    pip_value: 0.0001
+    min_lot: 0.01
+    max_lot: 100.0
+    max_spread_pips: 2.0
+  V75:
+    pip_value: 0.01
+    min_lot: 0.001
+    max_lot: 10.0
+    max_spread_pips: 5.0
+  BOOM1000:
+    pip_value: 0.01
+    min_lot: 0.01
+    max_lot: 50.0
+    max_spread_pips: 3.0
+  R_25:
+    pip_value: 0.001
+    min_lot: 0.5
+    max_lot: 50.0
+    max_spread_pips: 0.05
+  1HZ25V:
+    pip_value: 1.0
+    pip_size: 1.0
+    min_lot: 0.01
+    max_lot: 50.0
+    max_spread_pips: 0.1
+    typical_price: 854443.0
+  1HZ75V:
+    pip_value: 1.0
+    pip_size: 0.01
+    min_lot: 0.01
+    max_lot: 50.0
+    max_spread_pips: 1.0
+    typical_price: 3896.0
+  1HZ10V:
+    pip_value: 1.0
+    pip_size: 0.01
+    min_lot: 0.01
+    max_lot: 50.0
+    max_spread_pips: 1.0
+    typical_price: 9754.0
+
+# Backtester Settings
+backtester:
+  initial_balance: 10000
+  risk_free_rate: 0.02
+  cache_dir: "cache/history"
+  output_dir: "outputs/backtests"
+  simulate_slippage: true
+  
+  # Default backtest window
+  default_days: 30
+  
+  # Visualization
+  plot_equity_curve: true
+  save_chart: true
+
+ohlc_strategy:
+  min_confidence_default: 0.0
+  min_confidence:
+    1HZ10V: 0.55
+    1HZ25V: 0.0
+    1HZ75V: 0.0
+  deriv_day_reset_hour: 0
+  deriv_day_reset_minute: 0
+  adr_lookback_days: 20
+  breakout_buffer_pct: 0.005
+  momentum_threshold_pct: 0.015
+  ema_gap_threshold_pct: 0.001
+  confidence_weights:
+    momentum: 0.5
+    ema: 0.3
+    breakout: 0.2
+  confidence_targets:
+    - {min: 0.8, target_pct_adr: 0.40}
+    - {min: 0.6, target_pct_adr: 0.30}
+    - {min: 0.4, target_pct_adr: 0.25}
+    - {min: 0.0, target_pct_adr: 0.20}
+
+risk:
+  max_trades_per_direction: 1
+  tp2_ratio: 2.0
+  atr_multiplier: 8.0
+  max_sl_pct_adr: 0.08
+  tp_confidence_weights:
+    high:   {min_confidence: 0.8, pct_adr_remaining: 0.60}
+    medium: {min_confidence: 0.6, pct_adr_remaining: 0.45}
+    low:    {min_confidence: 0.4, pct_adr_remaining: 0.30}
+    base:   {min_confidence: 0.0, pct_adr_remaining: 0.20}
+  tp1_ratio: 0.5
+  trail_atr_multiplier: 0.5
+  trail_activate_after_tp1: true
