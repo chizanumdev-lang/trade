@@ -55,35 +55,63 @@ class DerivExecutor(BaseExecutor):
         self.api = None
         self.contract_ids = {} # symbol -> contract_id
 
-    async def connect(self):
-        if DerivAPI:
-            # Note: This is an async constructor in deriv_api usually
-            # self.api = await DerivAPI(app_id=...)
-            pass
+    async def place_limit_order(self, order: TradeOrder) -> bool:
+        return False
+
+    async def connect(self, app_id: int = 1089):
+        if self.api: return True
+        try:
+            import websockets
+            from deriv_api import DerivAPI
+            uri = f"wss://ws.binaryws.com/websockets/v3?app_id={app_id}"
+            self.ws = await websockets.connect(uri)
+            self.api = DerivAPI(connection=self.ws)
+            await self.api.authorize(self.api_token)
+            return True
+        except Exception as e:
+            print(f"DerivExecutor connection failed: {e}")
+            return False
 
     async def place_market_order(self, order: TradeOrder) -> bool:
-        if not self.api: return False
+        if not self.api and not await self.connect(): return False
         
-        payload = {
-            "buy": 1,
-            "price": order.lot_size,
-            "parameters": {
-                "amount": order.risk_amount,
-                "basis": "stake",
-                "contract_type": "CALL" if order.direction == "BUY" else "PUT",
-                "currency": "USD",
-                "duration": 1,
-                "duration_unit": "m",
-                "symbol": order.symbol
+        try:
+            payload = {
+                "buy": 1,
+                "price": order.risk_amount,
+                "parameters": {
+                    "amount": order.risk_amount,
+                    "basis": "stake",
+                    "contract_type": "CALL" if order.direction == "BUY" else "PUT",
+                    "currency": "USD",
+                    "duration": 1,
+                    "duration_unit": "m",
+                    "symbol": order.symbol
+                }
             }
-        }
-        # In a real implementation: result = await self.api.send(payload)
-        # For now, we simulate success if api is "connected"
-        return True
+            res = await self.api.buy(payload)
+            if 'buy' in res:
+                self.contract_ids[order.symbol] = res['buy']['contract_id']
+                return True
+            return False
+        except Exception as e:
+            print(f"DerivExecutor buy failed: {e}")
+            return False
 
     async def close_position(self, order: TradeOrder, lot_size: float, exit_price: float) -> Optional[float]:
-        # Placeholder: await self.api.sell({'sell': self.contract_ids[order.symbol]})
-        return 0.0
+        if not self.api: return 0.0
+        try:
+            contract_id = self.contract_ids.get(order.symbol)
+            if contract_id:
+                await self.api.sell({"sell": contract_id, "price": 0})
+            
+            # P&L Calculation (as in PaperExecutor)
+            pips = (exit_price - order.entry_price) if order.direction == "BUY" else (order.entry_price - exit_price)
+            # Simplified: assuming pip_value=1 for this calculation context
+            return pips * lot_size
+        except Exception as e:
+            print(f"DerivExecutor sell failed: {e}")
+            return 0.0
 
     def get_current_spread(self, symbol: str) -> float:
         return 0.0 # Placeholder: fetch from ticks
@@ -198,7 +226,8 @@ class TradeManager:
             'PAPER': PaperExecutor(),
         }
         if not paper_mode:
-            self.executors['DERIV'] = DerivExecutor("DUMMY_TOKEN")
+            deriv_config = full_config.get('deriv', {})
+            self.executors['DERIV'] = DerivExecutor(deriv_config.get('api_token', ''))
             self.executors['MT5'] = MT5Executor()
         
         self.active_trades: Dict[str, TradeOrder] = {}
