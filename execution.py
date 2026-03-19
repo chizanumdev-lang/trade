@@ -1,4 +1,5 @@
 import asyncio
+import os
 import logging
 import yaml
 import pandas as pd
@@ -117,30 +118,36 @@ class DerivExecutor(BaseExecutor):
         return 0.0 # Placeholder: fetch from ticks
 
 class MT5Executor(BaseExecutor):
-    def __init__(self):
-        if mt5 and not mt5.initialize():
-            logger.error("MT5 initialize failed")
+    def __init__(self, config: dict):
+        self.config = config.get('mt5_bridge', {})
+        self.bridge_mode = not os.name == 'nt' or not mt5
+        self.bridge_file = self.config.get('command_file', 'logs/mt5_commands.csv')
+        
+        if not self.bridge_mode:
+            if mt5 and not mt5.initialize():
+                print("MT5 initialize failed, falling back to Bridge Mode")
+                self.bridge_mode = True
+        
+        if self.bridge_mode:
+            print(f"MT5Executor running in BRIDGE MODE (output: {self.bridge_file})")
 
     async def place_limit_order(self, order: TradeOrder) -> bool:
-        if not mt5: return False
-        request = {
-            "action": mt5.TRADE_ACTION_PENDING,
-            "symbol": order.symbol,
-            "volume": order.lot_size,
-            "type": mt5.ORDER_TYPE_BUY_LIMIT if order.direction == 'BUY' else mt5.ORDER_TYPE_SELL_LIMIT,
-            "price": order.entry_price,
-            "sl": order.sl_price,
-            "tp": order.tp2_price,
-            "magic": 123456,
-            "comment": "Antigravity Bot",
-            "type_time": mt5.ORDER_TIME_GTC,
-            "type_filling": mt5.ORDER_FILLING_IOC,
-        }
-        result = mt5.order_send(request)
-        return result.retcode == mt5.TRADE_RETCODE_DONE if result else False
+        return await self.place_market_order(order) # Bridge simplified to market for now
 
     async def place_market_order(self, order: TradeOrder) -> bool:
+        if self.bridge_mode:
+            try:
+                # Format: SYMBOL,DIRECTION,VOLUME,SL,TP,ID
+                line = f"{order.symbol},{order.direction},{order.lot_size},{order.sl_price},{order.tp2_price},{datetime.now().timestamp()}\n"
+                with open(self.bridge_file, 'a') as f:
+                    f.write(line)
+                return True
+            except Exception as e:
+                print(f"MT5 Bridge write failed: {e}")
+                return False
+
         if not mt5: return False
+        # Native MT5 Logic...
         request = {
             "action": mt5.TRADE_ACTION_DEAL,
             "symbol": order.symbol,
@@ -228,7 +235,7 @@ class TradeManager:
         if not paper_mode:
             deriv_config = full_config.get('deriv', {})
             self.executors['DERIV'] = DerivExecutor(deriv_config.get('api_token', ''))
-            self.executors['MT5'] = MT5Executor()
+            self.executors['MT5'] = MT5Executor(full_config)
         
         self.active_trades: Dict[str, TradeOrder] = {}
         self.partial_closed_symbols = set()

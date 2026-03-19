@@ -121,6 +121,10 @@ routing:
   DERIV: ['V75', 'BOOM1000', 'CRASH500', 'STEP', 'R_25', '1HZ25V', '1HZ75V', '1HZ10V']
   MT5: ['EURUSD', 'GBPUSD', 'XAUUSD', 'US30']
 
+mt5_bridge:
+  enabled: false
+  command_file: 'logs/mt5_commands.csv'
+
 # Instrument Specifics
 instruments:
   EURUSD:
