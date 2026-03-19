@@ -23,6 +23,8 @@ class TradeOrder:
     atr_value: float
     rejected: bool
     rejection_reason: Optional[str] = None
+    risk_amount: float = 0.0
+    source: str = 'OHLC'
     tp1_hit: bool = False
     trail_active: bool = False
 
@@ -242,6 +244,8 @@ class RiskManager:
             trail_distance=atr * self.trail_atr_multiplier,
             risk_fraction=kelly_fraction,
             kelly_fraction=kelly_fraction,
+            risk_amount=risk_amount,
+            source=getattr(signal, 'source', 'OHLC'),
             atr_value=atr,
             rejected=False
         )
@@ -251,6 +255,7 @@ class RiskManager:
             symbol=signal.symbol, direction=signal.direction, lot_size=0,
             entry_price=signal.entry_price, sl_price=0, tp1_price=0, tp2_price=0,
             be_trigger_price=0, trail_distance=0, risk_fraction=0, kelly_fraction=0,
+            risk_amount=0, source='REJECTED',
             atr_value=0, rejected=True, rejection_reason=reason
         )
 

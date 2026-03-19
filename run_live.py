@@ -44,7 +44,7 @@ async def main():
     def on_trade_event(event):
         logger.log_trade_event(event)
 
-    trade_manager = TradeManager(CONFIG_PATH, on_trade_event, paper_mode=True)
+    trade_manager = TradeManager(CONFIG_PATH, on_trade_event, paper_mode=False)
 
     feed = DataFeed(CONFIG_PATH)
 

@@ -43,7 +43,7 @@ class BaseExecutor:
     async def modify_order(self, order: TradeOrder, new_sl: float, new_tp: float) -> bool:
         raise NotImplementedError
         
-    async def close_position(self, order: TradeOrder, lot_size: float) -> Optional[float]:
+    async def close_position(self, order: TradeOrder, lot_size: float, exit_price: float) -> Optional[float]:
         raise NotImplementedError
         
     def get_current_spread(self, symbol: str) -> float:
@@ -62,10 +62,26 @@ class DerivExecutor(BaseExecutor):
             pass
 
     async def place_market_order(self, order: TradeOrder) -> bool:
-        # Placeholder for deriv-api call: await self.api.buy({'buy': '...' })
+        if not self.api: return False
+        
+        payload = {
+            "buy": 1,
+            "price": order.lot_size,
+            "parameters": {
+                "amount": order.risk_amount,
+                "basis": "stake",
+                "contract_type": "CALL" if order.direction == "BUY" else "PUT",
+                "currency": "USD",
+                "duration": 1,
+                "duration_unit": "m",
+                "symbol": order.symbol
+            }
+        }
+        # In a real implementation: result = await self.api.send(payload)
+        # For now, we simulate success if api is "connected"
         return True
 
-    async def close_position(self, order: TradeOrder, lot_size: float) -> Optional[float]:
+    async def close_position(self, order: TradeOrder, lot_size: float, exit_price: float) -> Optional[float]:
         # Placeholder: await self.api.sell({'sell': self.contract_ids[order.symbol]})
         return 0.0
 
@@ -117,7 +133,7 @@ class MT5Executor(BaseExecutor):
         # Placeholder for TRADE_ACTION_SLTP
         return True
 
-    async def close_position(self, order: TradeOrder, lot_size: float) -> Optional[float]:
+    async def close_position(self, order: TradeOrder, lot_size: float, exit_price: float) -> Optional[float]:
         # Placeholder for TRADE_ACTION_DEAL (closing)
         return 0.0
 
@@ -141,9 +157,10 @@ class PaperExecutor(BaseExecutor):
     async def modify_order(self, order: TradeOrder, new_sl: float, new_tp: float) -> bool:
         return True
         
-    async def close_position(self, order: TradeOrder, lot_size: float) -> Optional[float]:
+    async def close_position(self, order: TradeOrder, lot_size: float, exit_price: float) -> Optional[float]:
         entry = self.open_prices.get(order.symbol, order.entry_price)
-        pips = (order.entry_price - entry) if order.direction == 'SELL' else (entry - order.entry_price)
+        pips = (exit_price - entry) if order.direction == 'BUY' else (entry - exit_price)
+        # Assuming 100 multiplier for simplicity in paper mode, matching previous logic but fixed
         return pips * 100 * lot_size
 
     def get_current_spread(self, symbol: str) -> float:
@@ -186,6 +203,7 @@ class TradeManager:
         
         self.active_trades: Dict[str, TradeOrder] = {}
         self.partial_closed_symbols = set()
+        self.trade_count = 0
 
     def _get_executor(self, symbol: str) -> BaseExecutor:
         if self.paper_mode:
@@ -227,6 +245,7 @@ class TradeManager:
 
             # 3. Successful entry
             self.active_trades[symbol] = order
+            self.trade_count += 1
             event = TradeEvent(
                 'OPENED', symbol, order.direction, order.lot_size, 
                 order.entry_price, order.sl_price, order.tp2_price, 
@@ -273,7 +292,7 @@ class TradeManager:
                       (order.direction == 'SELL' and current_price <= order.tp1_price)
             if hit_tp1:
                 p_lot = order.lot_size * 0.5
-                p_profit = await executor.close_position(order, p_lot)
+                p_profit = await executor.close_position(order, p_lot, current_price)
                 self.partial_closed_symbols.add(symbol)
                 # Update order to set tp1_hit
                 self.active_trades[symbol] = dataclass_replace(self.active_trades[symbol], tp1_hit=True)
@@ -289,7 +308,7 @@ class TradeManager:
         
         if hit_tp2 or hit_sl:
             remaining_lot = order.lot_size * 0.5 if symbol in self.partial_closed_symbols else order.lot_size
-            profit = await executor.close_position(order, remaining_lot)
+            profit = await executor.close_position(order, remaining_lot, current_price)
             reason = "TP2 Hit" if hit_tp2 else "SL Hit"
             close_event = TradeEvent('CLOSED', symbol, order.direction, remaining_lot, current_price, order.sl_price, order.tp2_price, profit_loss=profit, reason=reason, broker=broker_name)
             self.logger_callback(close_event)
@@ -306,7 +325,7 @@ class TradeManager:
             if order.direction != signal.direction:
                 executor = self._get_executor(symbol)
                 remaining_lot = order.lot_size * 0.5 if symbol in self.partial_closed_symbols else order.lot_size
-                profit = await executor.close_position(order, remaining_lot)
+                profit = await executor.close_position(order, remaining_lot, signal.entry_price)
                 self.logger_callback(TradeEvent('CLOSED', symbol, order.direction, remaining_lot, signal.entry_price, order.sl_price, order.tp2_price, profit_loss=profit, reason="Opposite Signal", broker='PAPER'))
                 del self.active_trades[symbol]
                 if symbol in self.partial_closed_symbols:
@@ -318,7 +337,8 @@ def dataclass_replace(obj, **kwargs):
 
 if __name__ == "__main__":
     def test_logger(event: TradeEvent):
-        print(f"[{event.timestamp.strftime('%H:%M:%S')}] {event.event_type}: {event.symbol} {event.direction} @ {event.price:.5f} | Lot: {event.lot_size} | Reason: {event.reason or '-'}")
+        pnl_str = f" | P&L: ${event.profit_loss:.2f}" if event.profit_loss is not None else ""
+        print(f"[{event.timestamp.strftime('%H:%M:%S')}] {event.event_type}: {event.symbol} {event.direction} @ {event.price:.5f} | Lot: {event.lot_size} | Reason: {event.reason or '-'}{pnl_str}")
 
     async def run_sim():
         manager = TradeManager("config.yaml", test_logger, paper_mode=True)
